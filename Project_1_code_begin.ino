@@ -6,7 +6,6 @@
 int reload;
 int vorigeleven  = 1;
 int levens = 1;
-int sensor = {35};
 int ammo = 0;
 int magazine;
 int magazineuit = 1;
@@ -19,6 +18,7 @@ pinMode(35, INPUT); //tempdoodknop
 pinMode(34, INPUT); //reload knop
 pinMode(2, INPUT); //trigger
 pinMode(5, INPUT); //"reset"
+//pinMode(2, INPUT); TEMP
 }
 void loop() {
 /*trigger indrukken*/
@@ -37,6 +37,14 @@ if (digitalRead(34) == HIGH){
   }else{
     reload = 0;
 }
+/*if (digitalRead(2) HIGH){
+magazine = 1
+}else{
+magazine = 0
+Serial.println();
+Serial.print(geen magazijn);
+}
+  
 /*reload sequence controlle*/
 if (magazine == 1 && magazineuit == 1 && levens == 1){
   ammo = 6;
@@ -48,9 +56,11 @@ if (magazine == 1 && magazineuit == 1 && levens == 1){
 if (ammo == 0){
   magazine = 0;
    magazineuit = 1;
+  Serial.println();
+  Serial.print("kogels op");
   }
 /*nu dood maar wordt levens-1 knop*/
-if (digitalRead(sensor) == HIGH){
+if (digitalRead(35) == HIGH){
   levens = 0;
 }
 /*0 levens? dood*/
@@ -85,6 +95,7 @@ if (reload == 1 && ammo != 0 && ammo != 6 && levens == 1){
   magazineuit = 1;
 }
 }
+
 
 
 
