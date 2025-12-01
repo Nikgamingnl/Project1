@@ -2,36 +2,39 @@
 //34 is reload
 //2 is shoot
 //5 is revive
-
-int reload;
+const int reset = digitalRead(5);
+const int  doodknop = digitalRead(35);
+int  reload;
 int vorigeleven  = 1;
 int levens = 1;
 int ammo = 0;
 int magazine;
 int magazineuit = 1;
-int trigger;
+int trigactive;
 int shot;
+const int  trigger = digitalRead(2);
+const int  reloadknop = digitalRead(34);
 
 void setup() {
 Serial.begin(9600);
-pinMode(35, INPUT); //tempdoodknop
-pinMode(34, INPUT); //reload knop
-pinMode(2, INPUT); //trigger
-pinMode(5, INPUT); //"reset"
+pinMode(35, INPUT_PULLUP); //tempdoodknop
+pinMode(34, INPUT_PULLUP); //reload knop
+pinMode(2, INPUT_PULLUP); //trigger
+pinMode(5, INPUT_PULLUP); //"reset"
 //pinMode(2, INPUT); TEMP
 }
 void loop() {
 /*trigger indrukken*/
-if (digitalRead(2) == HIGH && shot == 0 && trigger == 0){
-  trigger = 1;
+if (trigger == HIGH && shot == 0 && trigactive == 0){
+  trigactive = 1;
   shot = 1;
 }
 /*trigger loslaten*/
-if (digitalRead(2) == LOW){
-  trigger = 0;
+if (trigger == LOW){
+  trigactive = 0;
 }
 /*reload sequence start*/
-if (digitalRead(34) == HIGH){
+if (reloadknop == HIGH){
   reload = 1;
   magazine = 1;
   }else{
@@ -60,7 +63,7 @@ if (ammo == 0){
   Serial.print("kogels op");
   }
 /*nu dood maar wordt levens-1 knop*/
-if (digitalRead(35) == HIGH){
+if (doodknop == HIGH){
   levens = 0;
 }
 /*0 levens? dood*/
@@ -70,7 +73,7 @@ if (levens != vorigeleven && levens == 0){
   vorigeleven = levens;
 }
 /*temp reset sequence*/
-if(digitalRead(5) == 1 && levens == 0){
+if(reset == 1 && levens == 0){
   levens = 1;
   vorigeleven = levens;
   ammo = 0;
@@ -95,6 +98,7 @@ if (reload == 1 && ammo != 0 && ammo != 6 && levens == 1){
   magazineuit = 1;
 }
 }
+
 
 
 
