@@ -5,15 +5,15 @@ const int PIN_TRIGGER = 2;
 const int PIN_RESET   = 5;
 const int PIN_HIT     = 4;
 const int PIN_SETUP   = 21;
-      int levens      = 0
-const int PIN_RDR     = 19
-const int PIN_PVP     = 18
+      int levens      = 0;
+const int PIN_RDR     = 19;
+const int PIN_PVP     = 18;
 unsigned long startMillis;
 unsigned long currentMillis;
 const unsigned long period = 250;
 const unsigned long period2 = 1800;
 const unsigned long period3 = 600;
-const unsigned long period3 = 500;
+const unsigned long period4 = 500;
 // States
 enum State {
   SETUP,
@@ -54,7 +54,7 @@ void loop() {
   bool trigger    = digitalRead(PIN_TRIGGER);
   bool resetKnop  = digitalRead(PIN_RESET);
   bool hitknop    = digitalRead(PIN_HIT);
-  bool setupknop  = digitalRead(SETUPKNOP);
+  bool setupknop  = digitalRead(PIN_SETUP);
   bool rdr        = digitalRead(PIN_RDR);
   bool pvp        = digitalRead(PIN_PVP);
   
@@ -73,22 +73,23 @@ void loop() {
 
   switch (currentState) {
     case SETUP:
-      if (pvp && currentState == setup){
+      if (pvp && currentState == SETUP){
         levens = 3;
-        currentState = Alive;
-    }else if (rdr && currentState == setup){
+        currentState = ALIVE;
+    }else if (rdr && currentState == SETUP){
         levens = 1;
-        currentState = Alive;
-    
+        currentState = ALIVE;
+    }
     case ALIVE:
       if (hitknop){
         levens = levens - 1;
         startMillis = currentMillis;
-        currentState = hit;
+        currentState = HIT;
       } else if (levens == 0 || doodPressed) {
         currentState = DEAD;
         Serial.println("dood");
       } else if (reloadPressed) {
+        startMillis = currentMillis;
         currentState = RELOADING;
       } else if (triggerPressed && ammo > 0 && currentMillis - startMillis >= period) {
         startMillis = currentMillis;
@@ -101,7 +102,7 @@ void loop() {
          startMillis = currentMillis;
         currentState = ALIVE;
         }else{
-        currentState = hit;
+        currentState = HIT;
         }
         break;
       
@@ -115,8 +116,7 @@ void loop() {
       break;
 
     case RELOADING:
-      startMillis = currentMillis;
-      if (ammo != 6 && != 0 && magazineUit = 1 && currentMillis - startMillis >= period2){
+      if (ammo != 6 && ammo != 0 && magazineUit == 1 && currentMillis - startMillis >= period2){
        ammo = 6;
         magazineUit = 0;
         Serial.print("Reloaded, ammo = ");
@@ -128,9 +128,11 @@ void loop() {
         Serial.print("Reloaded, ammo = ");
         Serial.println(ammo);
         currentState = ALIVE;
+      }else{
+      currentState = RELOADING;
+        break;
       }
-      currentState = RELOAD;
-      break;
+    
 
     case SHOOTING:
       ammo--;
