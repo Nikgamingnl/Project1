@@ -88,6 +88,11 @@ void loop() {
   bool pvpPressed    = (pvp == HIGH        && prevPVP    == LOW);
   bool rdrPressed    = (rdr == HIGH        && prevRDR    == LOW);
 
+  // Debug reload button
+  if (reloadPressed) {
+    Serial.println("DEBUG: Reload button pressed!");
+  }
+
   // Update vorige waarden
   prevDood   = doodKnop;
   prevReload = reloadKnop;
