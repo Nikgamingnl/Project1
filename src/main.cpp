@@ -6,7 +6,7 @@
 
 
 
-//pins deff
+//pins deffinieren basis
 const int PIN_DOOD    = 35;
 const int PIN_RELOAD  = 34;
 const int PIN_TRIGGER = 2;
