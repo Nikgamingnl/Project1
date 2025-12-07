@@ -57,14 +57,8 @@ const unsigned long TRIGGER_DEBOUNCE_MS = 50;
 
 
 
-  switch (currentState) {
-    case SETUP: stateStr = "SETUP"; break;
-    case ALIVE: stateStr = "ALIVE"; break;
-    case HIT: stateStr = "HIT"; break;
-    case DEAD: stateStr = "DEAD"; break;
-    case RELOADING: stateStr = "RELOADING"; break;
-    case SHOOTING: stateStr = "SHOOTING"; break;
-  }
+  
+
 
 
 
@@ -75,7 +69,7 @@ const unsigned long TRIGGER_DEBOUNCE_MS = 50;
 void setup() {
   Serial.begin(115200);
 
-  }
+
 
 
 
