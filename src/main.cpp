@@ -2,21 +2,19 @@
 #include <Adafruit_GFX.h>
 #include <stdio.h>
 #include <Adafruit_SSD1306.h>
-//
-#define SCREEN_WIDTH 128 // OLED display width, in pixels
-#define SCREEN_HEIGHT 64 // OLED display height, in pixels
 
-#define OLED_RESET     -1 // Reset pin # (or -1 if sharing Arduino reset pin)
-#define SCREEN_ADDRESS 0x3C ///< See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
+#define SCREEN_WIDTH 128 
+#define SCREEN_HEIGHT 64 
+
+#define OLED_RESET     -1 
+#define SCREEN_ADDRESS 0x3C 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
-//millis wordt gebruikt omdat delay niet kan
-//alles gaat via serialmonitor omdat we nog geen displaycode hebben
-//als iemand de code kan versimpelen is dat erg fijn
 
 
 
-//pins deffinieren basis
+
+
 const int PIN_DOOD    = 35;
 const int PIN_RELOAD  = 34;
 const int PIN_TRIGGER = 17;
@@ -32,7 +30,7 @@ const unsigned long period = 250;
 const unsigned long period2 = 1800;
 const unsigned long period3 = 600;
 const unsigned long period4 = 500;
-// States
+
 enum State {
   SETUP,
   ALIVE,
@@ -44,38 +42,33 @@ enum State {
 
 State currentState = SETUP;
 
-// Variabelen
-int ammo = 0;
-// magazineUit removed: no spare-magazine concept, reload only when ammo < 6
 
-// Voor edge-detectie
-// Per-button defaults:
-// - Most buttons use INPUT_PULLUP (idle HIGH, press -> LOW)
-// - `PIN_RELOAD` and `PIN_TRIGGER` are wired active-high (idle LOW, press -> HIGH)
-bool prevTrigger = HIGH; // trigger is now INPUT_PULLUP (idle HIGH)
-bool prevReload  = LOW;  // reload remains active-high (idle LOW)
+int ammo = 0;
+
+
+
+bool prevTrigger = HIGH; 
+bool prevReload  = LOW;  
 bool prevDood    = HIGH;
 bool prevReset   = HIGH;
 bool prevHit     = HIGH;
 bool prevPVP     = HIGH;
 bool prevRDR     = HIGH;
 
-// Small helper to mirror important messages to the OLED
-// Display update guard: only update if message changes or after minimum interval
+
 String lastDisplay = "";
 unsigned long lastDisplayMillis = 0;
-const unsigned long DISPLAY_UPDATE_MIN_INTERVAL = 250; // ms
+const unsigned long DISPLAY_UPDATE_MIN_INTERVAL = 250; 
 
-// Trigger software debounce/state
+
 unsigned long triggerLastChange = 0;
 bool triggerRawLast = HIGH;
-bool triggerStable = HIGH; // debounced stable state (INPUT_PULLUP idle HIGH)
-const unsigned long TRIGGER_DEBOUNCE_MS = 50; // ms
+bool triggerStable = HIGH; 
+const unsigned long TRIGGER_DEBOUNCE_MS = 50; 
 
-// HUD (status) update interval
+
 unsigned long lastHUDMillis = 0;
-const unsigned long HUD_UPDATE_INTERVAL = 300; // ms
-
+const unsigned long HUD_UPDATE_INTERVAL = 300; 
 void renderHUD() {
   const char* stateStr = "?";
   switch (currentState) {
@@ -102,7 +95,7 @@ void renderHUD() {
 void displayMessage(const char* msg) {
   String s = String(msg);
   unsigned long now = millis();
-  // If same message and we updated recently, skip redraw
+
   if (s == lastDisplay && (now - lastDisplayMillis) < DISPLAY_UPDATE_MIN_INTERVAL) {
     return;
   }
@@ -117,7 +110,7 @@ void displayMessage(const char* msg) {
   display.display();
 }
 
-// Logging helpers: mirror Serial output to the OLED (guarded by displayMessage)
+
 void logMsg(const char* msg) {
   Serial.println(msg);
 }
@@ -129,34 +122,33 @@ void logFmt(const char* prefix, int val) {
 
 void setup() {
   Serial.begin(115200);
-  delay(100);  // Give Serial time to initialize
+  delay(100); 
     if (!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) 
   {
     logMsg("SSD1306 allocation failed");
-    for (;;); // Don't proceed, loop forever
+    for (;;); 
   }
-  // Show initial display buffer contents on the screen --
-  // the library initializes this with an Adafruit splash screen.
+
   display.display();
-  delay(2000); // Pause for 2 seconds
+  delay(2000); 
 
   // Clear the buffer
   display.clearDisplay();
 
-  // Draw a single pixel in white
+  
   display.drawPixel(10, 10, SSD1306_WHITE);
 
-  // Show the display buffer on the screen. You MUST call display() after
-  // drawing commands to make them visible on screen!
+
+
   display.display();
-  delay(2000);   // Draw 'stylized' characters
+  delay(2000);   
   
   logMsg("System Starting...");
   
   pinMode(PIN_DOOD, INPUT_PULLUP);
-  // `PIN_RELOAD` is wired active-high (idle LOW), keep plain INPUT
+
   pinMode(PIN_RELOAD, INPUT);
-  // `PIN_TRIGGER` uses same wiring as other buttons (INPUT_PULLUP)
+
   pinMode(PIN_TRIGGER, INPUT_PULLUP);
   pinMode(PIN_RESET, INPUT_PULLUP);
   pinMode(PIN_HIT, INPUT_PULLUP);
@@ -182,10 +174,7 @@ void loop() {
   bool rdr        = digitalRead(PIN_RDR);
   bool pvp        = digitalRead(PIN_PVP);
   
-  // Detecteer rising edges (LOW -> HIGH)
-  // Edge detection per-button:
-  // - Most buttons: INPUT_PULLUP wiring -> idle HIGH, press -> LOW (detect falling edge)
-  // - Reload: wired active-high -> idle LOW, press -> HIGH (detect rising edge)
+
   bool doodPressed   = (doodKnop == LOW && prevDood   == HIGH);            // falling edge
   bool reloadPressed = (reloadKnop == HIGH && prevReload == LOW);         // rising edge (active-high)
   bool resetPressed  = (resetKnop == LOW && prevReset  == HIGH);         // falling edge
@@ -193,7 +182,7 @@ void loop() {
   bool pvpPressed    = (pvp == LOW && prevPVP    == HIGH);               // falling edge
   bool rdrPressed    = (rdr == LOW && prevRDR    == HIGH);               // falling edge
 
-  // Trigger: use software debounce to detect a clean falling edge (press)
+
   bool triggerPressed = false;
   if (trigger != triggerRawLast) {
     triggerRawLast = trigger;
@@ -201,18 +190,18 @@ void loop() {
   }
   if ((currentMillis - triggerLastChange) > TRIGGER_DEBOUNCE_MS) {
     if (triggerStable != trigger) {
-      // debounced state changed
+     
       triggerStable = trigger;
       if (triggerStable == LOW) {
-        // pressed
+       
         triggerPressed = true;
       }
     }
   }
 
-  // Debug reload button (removed)
+ 
   if (triggerPressed) {
-    // trigger detected (debounced press)
+ 
   }
 
   // Update vorige waarden
@@ -246,9 +235,9 @@ void loop() {
         currentState = DEAD;
         logMsg("DEAD - Press RESET to respawn");
         display.clearDisplay();
-      display.setTextSize(2);             // Normal 1:1 pixel scale
-      display.setTextColor(SSD1306_WHITE);        // Draw white text
-      display.setCursor(0, 0);            // Start at top-left corner
+      display.setTextSize(2);            
+      display.setTextColor(SSD1306_WHITE);       
+      display.setCursor(0, 0);          
       display.println(F("ok"));
 
       } else if (reloadPressed) {
@@ -297,9 +286,9 @@ void loop() {
       logFmt("Ammo: ", ammo);
       if (ammo == 0) {
         display.clearDisplay();
-        display.setTextSize(1);             // Normal 1:1 pixel scale
-        display.setTextColor(SSD1306_WHITE);        // Draw white text
-        display.setCursor(0, 0);            // Start at top-left corner
+        display.setTextSize(1);             
+        display.setTextColor(SSD1306_WHITE);       
+        display.setCursor(0, 0);            
         display.println(F("kogels op"));
 
         display.display();
@@ -308,7 +297,7 @@ void loop() {
       currentState = ALIVE;
       break;
   }
-  // Update HUD at a modest interval (independent from log messages)
+
   if (currentMillis - lastHUDMillis >= HUD_UPDATE_INTERVAL) {
     lastHUDMillis = currentMillis;
     renderHUD();
