@@ -17,6 +17,8 @@ int KY040_CLK_ACTUEEL;
 int teller = 0;
 int state = 0;
 bool richting;
+void selectie_gemaakt();
+
 
 void selectie_gemaakt();
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
@@ -1072,7 +1074,7 @@ void setup() {
   KY040_CLK_LAATST = digitalRead(KY040_CLK);
 
   attachInterrupt(digitalPinToInterrupt(KY040_SW), selectie_gemaakt, RISING);
-  attachInterrupt(digitalPinToInterrupt(KY040_DT), verander_selectie, CHANGE);
+
 
   Serial.begin(115200);
 
@@ -1205,4 +1207,32 @@ void loop() {
 
   // Update life LEDs
   updateLifeLEDs(lives);
+
+  // Display lives if teller > 0
+  if(teller > 0){
+    switch(lives) {
+    case 0:
+    display.drawBitmap(0, 0, leven[3] , 128,64,1);
+    display.display();
+    break;
+
+    case 1:
+    display.drawBitmap(0, 0, leven[0] , 128,64,1);
+    display.display();
+    break;
+
+    case 2:
+    display.drawBitmap(0, 0, leven[1] , 128,64,1);
+    display.display();
+    break;
+
+    case 3:
+    display.drawBitmap(0, 0, leven[2] , 128,64,1);
+    display.display();
+    break;
+    }
+  }
+}
+void selectie_gemaakt(){
+  state = 3;
 }
