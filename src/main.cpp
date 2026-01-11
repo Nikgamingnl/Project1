@@ -1,7 +1,21 @@
+#include <Arduino.h>
 #include <SPI.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+
+// Pin definitions
+const int PIN_DEATH   = 35;
+const int PIN_RELOAD  = 34;
+const int PIN_TRIGGER = 17;
+const int PIN_RESET   = 5;
+const int PIN_HIT     = 4;
+const int PIN_SETUP   = 16;
+const int PIN_RDR     = 19;
+const int PIN_PVP     = 18;
+const int PIN_LED1    = 2;   // LED for 1 life
+const int PIN_LED2    = 12;  // LED for 2 lives
+const int PIN_LED3    = 13;  // LED for 3 lives
 
 #define KY040_CLK 32
 #define KY040_DT 33
@@ -9,19 +23,58 @@
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
 
+// Game variables
+int lives = 0;
+int ammo = 0;
+bool magazineInserted = false;
+
+// Timing variables
+unsigned long startMillis;
+unsigned long currentMillis;
+const unsigned long HIT_DURATION = 500;
+const unsigned long RELOAD_DURATION_PARTIAL = 1800;  // For partial reload
+const unsigned long RELOAD_DURATION_EMPTY = 600;     // For empty reload
+
+// State machine
+enum State {
+  SETUP,
+  ALIVE,
+  HIT,
+  DEAD,
+  RELOADING,
+  SHOOTING
+};
+
+State currentState = SETUP;
+
+// Button debouncing variables
+bool prevTrigger = HIGH; 
+bool prevReload  = LOW;  
+bool prevDeath   = HIGH;
+bool prevReset   = HIGH;
+bool prevHit     = HIGH;
+bool prevPVP     = HIGH;
+bool prevRDR     = HIGH;
+
+unsigned long triggerLastChange = 0;
+bool triggerRawLast = HIGH;
+bool triggerStable = HIGH; 
+const unsigned long TRIGGER_DEBOUNCE_MS = 50; 
+
+// Interrupt flag for hit detection
+volatile bool hitInterruptFlag = false;
+
+// Encoder variables
 int KY040_CLK_LAATST;
 int KY040_CLK_ACTUEEL;
 int teller = 0;
-int state = 1;
+bool inSelection = true;
 int kogels = 0;
 int levens = 0;
-int iets = 1;
+int iets = 0;  // 0: not selected, 1: PVP, 2: RDR
 bool richting;
 
-void selectie_gemaakt();
-
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
-
 // 'Selectie_Standoff', 128x64px
 const unsigned char epd_bitmap_Selectie_Deathmatch [] PROGMEM = {
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
@@ -990,237 +1043,215 @@ const unsigned char* leven[5] = {
 	epd_bitmap_Game_over,
 	epd_bitmap_1leven_standoff
 };
+// ISR for hit sensor
+void IRAM_ATTR hitISR() {
+  hitInterruptFlag = true;
+}
+
+// ISR for encoder button
+void IRAM_ATTR selectie_gemaakt() {
+  if (inSelection) {
+    inSelection = false;
+  }
+}
+
+// Function to update life LEDs
+void updateLifeLEDs(int lives) {
+  digitalWrite(PIN_LED1, lives >= 1 ? HIGH : LOW);
+  digitalWrite(PIN_LED2, lives >= 2 ? HIGH : LOW);
+  digitalWrite(PIN_LED3, lives >= 3 ? HIGH : LOW);
+} 
 
 void setup() {
+  Serial.begin(115200);
+
+  // Configure pins
+  pinMode(PIN_DEATH, INPUT_PULLUP);
+  pinMode(PIN_RELOAD, INPUT);
+  pinMode(PIN_TRIGGER, INPUT_PULLUP);
+  pinMode(PIN_RESET, INPUT_PULLUP);
+  pinMode(PIN_HIT, INPUT);  // IR sensor
+  pinMode(PIN_SETUP, INPUT_PULLUP);
+  pinMode(PIN_RDR, INPUT_PULLUP);
+  pinMode(PIN_PVP, INPUT_PULLUP);
+  pinMode(PIN_LED1, OUTPUT);
+  pinMode(PIN_LED2, OUTPUT);
+  pinMode(PIN_LED3, OUTPUT);
+
+  // OLED setup
   display.begin(SSD1306_SWITCHCAPVCC, 0x3c);
-	display.clearDisplay();
+  display.clearDisplay();
 
-  pinMode(KY040_CLK, INPUT);
-  pinMode(KY040_DT, INPUT);
+  // Encoder setup
+  pinMode(KY040_CLK, INPUT_PULLUP);
+  pinMode(KY040_DT, INPUT_PULLUP);
   pinMode(KY040_SW, INPUT_PULLUP);
-
-  digitalWrite(KY040_CLK, true);
-  digitalWrite(KY040_DT, true);
-  digitalWrite(KY040_SW, true);
-
   KY040_CLK_LAATST = digitalRead(KY040_CLK);
 
+  // Attach interrupts
+  attachInterrupt(digitalPinToInterrupt(PIN_HIT), hitISR, FALLING);
   attachInterrupt(digitalPinToInterrupt(KY040_SW), selectie_gemaakt, RISING);
-
-  Serial.begin(9600);
+  
+  startMillis = millis();
 }
 
 void loop() {
-  KY040_CLK_ACTUEEL = digitalRead(KY040_CLK);
+  // Encoder polling
+  // Update current time
+  currentMillis = millis();
 
-  if(KY040_CLK_ACTUEEL != KY040_CLK_LAATST){
-    if(digitalRead(KY040_DT) != KY040_CLK_ACTUEEL){
-      teller ++;
-      richting = true;
+  if (inSelection) {
+    // Encoder polling
+    KY040_CLK_ACTUEEL = digitalRead(KY040_CLK);
+    if (KY040_CLK_ACTUEEL != KY040_CLK_LAATST) {
+      if (digitalRead(KY040_DT) != KY040_CLK_ACTUEEL) {
+        teller++;
+        richting = true;
+      } else {
+        richting = false;
+        teller--;
+      }
+      Serial.println("Rotation detected:");
+      Serial.print("Direction of rotation:");
+      if (richting) {
+        Serial.println("clockwise");
+        iets = 1;
+      } else if (!richting) {
+        Serial.println("counterclockwise");
+        iets = 2;
+      }
+      Serial.print("Current position:");
+      Serial.println(teller);
+      Serial.println("------------------------------");
+    }
+    KY040_CLK_LAATST = KY040_CLK_ACTUEEL;
+
+    if (!digitalRead(KY040_SW) && teller != 0) {
+      teller = 7;
+      Serial.println("position reset");
     }
 
-    else{
-      richting = false;
-      teller --;
-    }
-    Serial.println ("Rotation detected:");
-    Serial.print ("Direction of rotation:");
-         
-    if (richting && state != 3){
-      Serial.println ("clockwise");
-  		state = 1;
-			Serial.println(state);
-    }
-    else if (!richting && state != 3){
-      Serial.println ("counterclockwise");
-  		state = 2;
-			Serial.println(state);
-    }
-         
-    Serial.print ("Current position:");
-    Serial.println (teller);
-    Serial.println ("------------------------------");
-	}
-  KY040_CLK_LAATST = KY040_CLK_ACTUEEL;
-
-if (!digitalRead(KY040_SW) && teller != 0){
-    teller = 7;
-    Serial.println ("position reset");
-    Serial.println (state);
-  }
-	
-  switch(state) {
-
-    case 1:
+    // Selection mode
     display.clearDisplay();
-    display.drawBitmap(0, 0, selectie[0] , 128,64,1);
+    if (iets == 0 || iets == 1) {
+      display.drawBitmap(0, 0, selectie[0], 128, 64, 1);
+    } else {
+      display.drawBitmap(0, 0, selectie[1], 128, 64, 1);
+    }
     display.display();
-    break;
-
-    case 2:
-    display.clearDisplay();
-    display.drawBitmap(0, 0, selectie[1] , 128,64,1);
-    display.display();
-    break;
-
-		case 3:
-		break;
   }
 
-	if(iets == 1 && state == 3){
-    if(teller <=0){
-      switch(kogels) {
-
-      case 0:
-      display.clearDisplay();
-      display.drawBitmap(0, 0, kogel[6] , 128,64,1);
-      display.display();
-      break;
-
-      case 1:
-      display.clearDisplay();
-      display.drawBitmap(0, 0, kogel[5] , 128,64,1);
-      display.display();
-      break;
-
-      case 2:
-      display.clearDisplay();
-      display.drawBitmap(0, 0, kogel[4] , 128,64,1);
-      display.display();
-      break;
-
-      case 3:
-      display.clearDisplay();
-      display.drawBitmap(0, 0, kogel[3] , 128,64,1);
-      display.display();
-      break;
-
-      case 4:
-      display.clearDisplay();
-      display.drawBitmap(0, 0, kogel[2] , 128,64,1);
-      display.display();
-      break;
-
-      case 5:
-      display.clearDisplay();
-      display.drawBitmap(0, 0, kogel[1] , 128,64,1);
-      display.display();
-      break;
-
-      case 6:
-      display.clearDisplay();
-      display.drawBitmap(0, 0, kogel[0] , 128,64,1);
-      display.display();
-      break;
-      }
+  // Game mode
+  // Set initial values based on selection
+  static bool gameStarted = false;
+  if (!gameStarted) {
+    if (iets == 1) {
+      lives = 3;
+    } else if (iets == 2) {
+      lives = 1;
     }
-	}
+    ammo = 6;
+    currentState = ALIVE;
+    gameStarted = true;
+  }
 
-    if(teller > 0){
-      switch(levens) {
-      case 0:
-      display.clearDisplay();
-      display.drawBitmap(0, 0, leven[3] , 128,64,1);
-      display.display();
-			Serial.println("levens displayed");
-      break;
-
-      case 1:
-      display.clearDisplay();
-      display.drawBitmap(0, 0, leven[4] , 128,64,1);
-      display.display();
-      break;
-      }
-    }
+  // Read all inputs
+  bool deathButton = digitalRead(PIN_DEATH);
+  bool reloadButton = digitalRead(PIN_RELOAD);
+  bool trigger = digitalRead(PIN_TRIGGER);
+  bool resetButton = digitalRead(PIN_RESET);
+  bool hitSensor = digitalRead(PIN_HIT);
+  bool setupButton = digitalRead(PIN_SETUP);
+  bool rdrButton = digitalRead(PIN_RDR);
+  bool pvpButton = digitalRead(PIN_PVP);
   
-
-  if(iets == 2 && state == 3){
-    if(teller <=0){
-      switch(kogels) {
-
-      case 0:
-      display.clearDisplay();
-      display.drawBitmap(0, 0, kogel[6] , 128,64,1);
-      display.display();
-      break;
-
-      case 1:
-      display.clearDisplay();
-      display.drawBitmap(0, 0, kogel[5] , 128,64,1);
-      display.display();
-      break;
-
-      case 2:
-      display.clearDisplay();
-      display.drawBitmap(0, 0, kogel[4] , 128,64,1);
-      display.display();
-      break;
-
-      case 3:
-      display.clearDisplay();
-      display.drawBitmap(0, 0, kogel[3] , 128,64,1);
-      display.display();
-      break;
-
-      case 4:
-      display.clearDisplay();
-      display.drawBitmap(0, 0, kogel[2] , 128,64,1);
-      display.display();
-      break;
-
-      case 5:
-      display.clearDisplay();
-      display.drawBitmap(0, 0, kogel[1] , 128,64,1);
-      display.display();
-      break;
-
-      case 6:
-      display.clearDisplay();
-      display.drawBitmap(0, 0, kogel[0] , 128,64,1);
-      display.display();
-      break;
-      }
-    }
-
-    if(teller > 0){
-      switch(levens) {
-      case 0:
-      display.clearDisplay();
-      display.drawBitmap(0, 0, leven[3] , 128,64,1);
-      display.display();
-      break;
-
-      case 1:
-      display.clearDisplay();
-      display.drawBitmap(0, 0, leven[4] , 128,64,1);
-      display.display();
-      break;
-
-      case 2:
-      display.clearDisplay();
-      display.drawBitmap(0, 0, leven[1] , 128,64,1);
-      display.display();
-      break;
-
-      case 3:
-      display.clearDisplay();
-      display.drawBitmap(0, 0, leven[2] , 128,64,1);
-      display.display();
-      break;
+  // Update magazine status
+  magazineInserted = reloadButton;
+  
+  // Detect button presses (edges)
+  bool deathPressed = (deathButton == LOW && prevDeath == HIGH);
+  bool reloadPressed = (reloadButton == HIGH && prevReload == LOW);
+  bool resetPressed = (resetButton == LOW && prevReset == HIGH);
+  bool hitPressed = hitInterruptFlag || (hitSensor == LOW && prevHit == HIGH);  // Use interrupt flag or poll
+  
+  // Reset interrupt flag
+  hitInterruptFlag = false;
+  
+  // Trigger debouncing
+  bool triggerPressed = false;
+  if (trigger != triggerRawLast) {
+    triggerRawLast = trigger;
+    triggerLastChange = currentMillis;
+  }
+  if ((currentMillis - triggerLastChange) > TRIGGER_DEBOUNCE_MS) {
+    if (triggerStable != trigger) {
+      triggerStable = trigger;
+      if (triggerStable == LOW) {
+        triggerPressed = true;
       }
     }
   }
-}
+  
+  // Update previous states
+  prevDeath = deathButton;
+  prevReload = reloadButton;
+  prevTrigger = trigger;
+  prevReset = resetButton;
+  prevHit = hitSensor;
+  prevPVP = pvpButton;
+  prevRDR = rdrButton;
+  // State machine
+  switch (currentState) {
+    case SETUP:
+      // Game starts immediately in ALIVE
+      currentState = ALIVE;
+      break;
+    
+    case ALIVE:
+      if (hitPressed) {
+        lives--;
+        startMillis = currentMillis;
+        currentState = HIT;
+      } else if (lives <= 0 || deathPressed) {
+        currentState = DEAD;
+      } else if (reloadPressed && ammo < 6) {
+        startMillis = currentMillis;
+        currentState = RELOADING;
+      } else if (triggerPressed && ammo > 0 && magazineInserted) {
+        startMillis = currentMillis;
+        currentState = SHOOTING;
+      }
+      break;
 
-void selectie_gemaakt(){
-  display.clearDisplay();
-	if(state == 1){
-    iets = 1;
+    case HIT:
+      if (currentMillis - startMillis >= HIT_DURATION) {
+        currentState = ALIVE;
+      }
+      // Else remain in HIT
+      break;
+      
+    case DEAD:
+      if (resetPressed) {
+        ammo = 0;
+        lives = 0;
+        currentState = SETUP;
+      }
+      break;
+
+    case RELOADING:
+      if ((ammo != 6 && ammo != 0 && currentMillis - startMillis >= RELOAD_DURATION_PARTIAL) ||
+          (ammo == 0 && currentMillis - startMillis >= RELOAD_DURATION_EMPTY)) {
+        ammo = 6;
+        currentState = ALIVE;
+      }
+      break;
+    
+    case SHOOTING:
+      ammo--;
+      currentState = ALIVE;
+      break;
   }
 
-  else if(state == 2){
-    iets = 2;
-  }
-  state = 3;
+  // Update life LEDs
+  updateLifeLEDs(lives);
 }
-
