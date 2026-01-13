@@ -5,8 +5,8 @@
 #include <Adafruit_SSD1306.h>
 
 // IR Receiver pins
-static const uint8_t IR_PIN = 16;   // IR receiver OUT pin (replaces hitpin)
-static const uint8_t IR_TX_PIN = 18; // IR LED (through resistor + transistor if possible)
+static const uint8_t IR_PIN = 17;   // IR receiver OUT pin (replaces hitpin)
+static const uint8_t IR_TX_PIN = 5; // IR LED (through resistor + transistor if possible)
 static const uint8_t IR_STATUS_LED = 27; // Optional status LED for IR activity
 
 // Ring buffer for IR pulse data
@@ -1249,29 +1249,8 @@ void loop() {
     }
     
     case ALIVE: {
-      // Read hit sensor with debouncing
-      bool hitState = digitalRead(IR_PIN);
-      
-      // Detect hit on falling edge (HIGH to LOW transition) with debouncing
-      if (hitState == LOW && prevHitState == HIGH) {
-        Serial.print("Edge detected! Time since last hit: ");
-        Serial.println(currentMillis - lastHitTime);
-        // Check if enough time has passed since last hit
-        if ((currentMillis - lastHitTime) >= HIT_DEBOUNCE_MS) {
-          lives--;
-          lastHitTime = currentMillis;
-          startMillis = currentMillis;
-          hitsec = 1;
-          right2 = 1;
-          left2 = 1;
-          currentState = HIT;
-          Serial.print("HIT DETECTED! Lives remaining: ");
-          Serial.println(lives);
-        } else {
-          Serial.println("Hit ignored - too soon after last hit");
-        }
-      }
-      prevHitState = hitState;
+      // Hit detection is now handled in the IR pulse processing section below
+      // (removed duplicate hit detection code to prevent double-counting hits)
       
       if (lives <= 0) {
     
@@ -1280,12 +1259,28 @@ void loop() {
         ammo--;
         Serial.println(ammo);
         
-        // Send IR pulse when shooting
-        Serial.println("Sending IR pulse!");
+        // Send IR signal mimicking NEC protocol for better detection
+        Serial.println("Sending IR signal!");
+        
+        // NEC protocol header
         ledcWrite(LEDC_CHANNEL, LEDC_DUTY);
-        delayMicroseconds(9000);  // 9ms carrier burst
+        delayMicroseconds(9000);  // 9ms header burst
         ledcWrite(LEDC_CHANNEL, 0);
-        delayMicroseconds(4500);  // 4.5ms pause
+        delayMicroseconds(4500);  // 4.5ms space
+        
+        // Send data bits (32 bits total to mimic complete NEC frame)
+        for (int i = 0; i < 32; i++) {
+          ledcWrite(LEDC_CHANNEL, LEDC_DUTY);
+          delayMicroseconds(560);   // 560μs burst for each bit
+          ledcWrite(LEDC_CHANNEL, 0);
+          // Alternate between logical 0 and 1 timing
+          delayMicroseconds((i % 2) ? 1690 : 560);
+        }
+        
+        // Final stop bit
+        ledcWrite(LEDC_CHANNEL, LEDC_DUTY);
+        delayMicroseconds(560);
+        ledcWrite(LEDC_CHANNEL, 0);
         
         startMillis = currentMillis;
         currentState = SHOOTING;
@@ -1416,14 +1411,21 @@ void loop() {
         Serial.println("IR signal received - LED on!");
         
         // Register a HIT when IR pulse is received (only if game is active)
+        // Added debouncing to prevent multiple hits from the same IR burst
         if (ja == 1 && currentState == ALIVE && dood == 0) {
-          lives--;
-          Serial.println("HIT detected via IR!");
-          startMillis = currentMillis;
-          hitsec = 1;
-          right2 = 1;
-          left2 = 1;
-          currentState = HIT;
+          if ((currentMillis - lastHitTime) >= HIT_DEBOUNCE_MS) {
+            lives--;
+            lastHitTime = currentMillis;
+            Serial.print("HIT detected via IR! Lives remaining: ");
+            Serial.println(lives);
+            startMillis = currentMillis;
+            hitsec = 1;
+            right2 = 1;
+            left2 = 1;
+            currentState = HIT;
+          } else {
+            Serial.println("IR hit ignored - too soon after last hit");
+          }
         }
       }
     }
