@@ -8,11 +8,11 @@
 #define KY040_SW 15
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
-const
+
 #define CLK_PIN 32  // CLK or A pin of the encoder
 #define DT_PIN 35
 // Pin definitions
-const int PIN_DEATH   = 35;
+
 const int PIN_MAG  = 18;
 const int PIN_TRIGGER = 17;
 const int PIN_RESET   = 5;
@@ -1051,7 +1051,6 @@ State currentState = SETUP;
 
 // Button debouncing variables
 bool prevTrigger = HIGH;  
-bool prevDeath   = HIGH;
 bool prevReset   = HIGH;
 bool prevHit     = HIGH;
 
@@ -1072,9 +1071,9 @@ void setup() {
   pinMode(KY040_CLK, INPUT);
   pinMode(KY040_DT, INPUT);
   pinMode(KY040_SW, INPUT_PULLUP);
-  pinMode(PIN_DEATH, INPUT_PULLUP);
+  
   pinMode(PIN_MAG, INPUT_PULLUP);
-  pinMode(PIN_TRIGGER, INPUT);
+  pinMode(PIN_TRIGGER, INPUT_PULLUP);
   pinMode(PIN_RESET, INPUT_PULLUP);
   pinMode(PIN_HIT, INPUT_PULLUP);  // IR sensor
   pinMode(PIN_SETUP, INPUT_PULLUP);
@@ -1142,7 +1141,7 @@ void loop() {
   currentMillis = millis();
   
   // Read all inputs
-  bool deathButton = digitalRead(PIN_DEATH);
+  
   bool reloadButton = digitalRead(PIN_MAG);
   bool trigger = digitalRead(PIN_TRIGGER);
   bool resetButton = digitalRead(PIN_RESET);
@@ -1153,11 +1152,10 @@ void loop() {
   magazineInserted = !reloadButton;
   
   // Detect button presses (edges)
-  bool deathPressed = (deathButton == LOW && prevDeath == HIGH);
   bool triggerPressed = (trigger == LOW && prevTrigger == HIGH);
   
   // Update previous states
-  prevDeath = deathButton;
+ 
   prevTrigger = trigger;
   
   
@@ -1202,10 +1200,12 @@ void loop() {
         right2 = 1;
         left2 = 1;
         currentState = HIT;
-      } else if (lives <= 0 || deathPressed) {
+      } else if (lives <= 0) {
     
         currentState = DEAD;
       } else if (triggerPressed && ammo > 0 && magazineInserted) {
+        ammo--;
+        Serial.println(ammo);
         startMillis = currentMillis;
         currentState = SHOOTING;
       }
@@ -1224,9 +1224,9 @@ void loop() {
     
     break;
     case SHOOTING:
-      ammo--;
-      Serial.println(ammo);
-      currentState = ALIVE;
+      if (currentMillis - startMillis >= RELOAD_DURATION_PARTIAL) {
+        currentState = ALIVE;
+      }
       break;
 }
       if(ja == 1 && lives != previousLives && dood == 0 || ja == 1 && right == 1 && right2 == 1 && dood == 0){
