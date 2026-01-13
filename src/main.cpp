@@ -3,30 +3,28 @@
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
-#define KY040_CLK 32
-#define KY040_DT 35
-#define KY040_SW 15
+#define KY040_CLK 33
+#define KY040_DT 32
+#define KY040_SW 14
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
 
-#define CLK_PIN 32  // CLK or A pin of the encoder
-#define DT_PIN 35
+#define CLK_PIN 33  // CLK or A pin of the encoder
+#define DT_PIN 32
 // Pin definitions
 
-const int PIN_MAG  = 18;
-const int PIN_TRIGGER = 17;
-const int PIN_RESET   = 5;
-const int PIN_HIT     = 4;
-const int PIN_SETUP   = 16;
+const int PIN_MAG  = 35;
+const int PIN_TRIGGER = 12;
+const int PIN_HIT     = 16;
 int right2 = 1;
 int left2 = 0;
-const int PIN_LED1    = 2;   // LED for 1 life
-const int PIN_LED2    = 12;  // LED for 2 lives
-const int PIN_LED3    = 13;  // LED for 3 lives
+const int PIN_LED1    = 15;   // LED for 1 life
+const int PIN_LED2    = 2;  // LED for 2 lives
+const int PIN_LED3    = 4;  // LED for 3 lives
 int right = 1;
 int left = 0;
-
 int ja = 0;
+
 int lives = 0;
 int ammo = 0;
 int previousLives = -1;
@@ -1072,9 +1070,9 @@ void setup() {
   
   pinMode(PIN_MAG, INPUT_PULLUP);
   pinMode(PIN_TRIGGER, INPUT_PULLUP);
-  pinMode(PIN_RESET, INPUT_PULLUP);
+  
   pinMode(PIN_HIT, INPUT_PULLUP);  // IR sensor
-  pinMode(PIN_SETUP, INPUT_PULLUP);
+  
   pinMode(PIN_LED1, OUTPUT);
   pinMode(PIN_LED2, OUTPUT);
   pinMode(PIN_LED3, OUTPUT);
@@ -1142,7 +1140,7 @@ void loop() {
   
   bool reloadButton = digitalRead(PIN_MAG);
   bool trigger = digitalRead(PIN_TRIGGER);
-  bool resetButton = digitalRead(PIN_RESET);
+ 
   
 
   
