@@ -27,7 +27,8 @@ static const uint8_t LEDC_CHANNEL = 0;
 static const uint32_t LEDC_FREQ = 38000;
 static const uint8_t LEDC_RES_BITS = 8;
 static const uint32_t LEDC_DUTY = 128; // 50% duty at 8-bit resolution
-
+#define vibratePin 23
+#define vibratepin2 19
 #define KY040_CLK 33
 #define KY040_DT 32
 #define KY040_SW 14
@@ -38,7 +39,7 @@ static const uint32_t LEDC_DUTY = 128; // 50% duty at 8-bit resolution
 #define DT_PIN 32
 // Pin definitions
 
-const int PIN_MAG  = 35;
+const int PIN_MAG  = 1;
 const int PIN_TRIGGER = 12;
 int right2 = 1;
 int left2 = 0;
@@ -57,10 +58,19 @@ bool prevMagazineInserted = false;
 int hitsec = 0;
 int dood = 0;
 
+// Magazine debounce timing
+unsigned long magazineChangeTime = 0;
+const unsigned long MAGAZINE_DEBOUNCE_MS = 500;  // 100ms delay for magazine disconnect/reconnect
+
 // Hit detection debouncing
 unsigned long lastHitTime = 0;
-const unsigned long HIT_DEBOUNCE_MS = 1000;  // 1 second between hits
+const unsigned long HIT_DEBOUNCE_MS = 500;  // 500ms between hits (reduced for better responsiveness)
 bool prevHitState;
+unsigned long vibrationStartTime = 0;
+bool isVibrating = false;
+
+unsigned long vibration2StartTime = 0;
+bool isVibrating2 = false;
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 // 'Selectie_Standoff', 128x64px
@@ -1035,7 +1045,7 @@ const unsigned char* leven[5] = {
 unsigned long startMillis;
 unsigned long currentMillis;
 const unsigned long HIT_DURATION = 500;
-const unsigned long RELOAD_DURATION_PARTIAL = 1800;  // For partial reload
+const unsigned long RELOAD_DURATION_PARTIAL = 300;  // For partial reload
 const unsigned long RELOAD_DURATION_EMPTY = 600;     // For empty reload
 
 // State machine
@@ -1108,17 +1118,16 @@ void setup() {
   Serial.begin(115200);
   display.begin(SSD1306_SWITCHCAPVCC, 0x3c);
   display.clearDisplay();
-  pinMode(17, OUTPUT);
-  digitalWrite(17, HIGH); // Power the display
+  pinMode(16, OUTPUT);
+  digitalWrite(16, HIGH);
   // Configure IR receiver pins
   pinMode(IR_PIN, INPUT);  // IR receivers should not have pull-up
   pinMode(IR_STATUS_LED, OUTPUT);
   digitalWrite(IR_STATUS_LED, LOW);
-  
-  // Configure 38 kHz PWM for the IR LED using older LEDC API
-  ledcSetup(LEDC_CHANNEL, LEDC_FREQ, LEDC_RES_BITS);
-  ledcAttachPin(IR_TX_PIN, LEDC_CHANNEL);
-  ledcWrite(LEDC_CHANNEL, 0);
+  pinMode(5,OUTPUT);
+  // Configure 38 kHz PWM for the IR LED using new ESP32 3.x LEDC API
+  ledcAttach(IR_TX_PIN, LEDC_FREQ, LEDC_RES_BITS);
+  ledcWrite(IR_TX_PIN, 0);
   
   // Attach interrupt to IR pin (both edges to capture demodulated pulses)
   attachInterrupt(digitalPinToInterrupt(IR_PIN), handleIrChange, CHANGE);
@@ -1141,6 +1150,10 @@ void setup() {
   pinMode(PIN_LED1, OUTPUT);
   pinMode(PIN_LED2, OUTPUT);
   pinMode(PIN_LED3, OUTPUT);
+	pinMode(vibratePin, OUTPUT);
+  digitalWrite(vibratePin, LOW);
+	pinMode(vibratepin2, OUTPUT);
+  digitalWrite(vibratepin2, LOW);
   pinMode(CLK_PIN, INPUT_PULLUP);
   pinMode(DT_PIN, INPUT_PULLUP);
       display.clearDisplay();
@@ -1163,7 +1176,8 @@ void setup() {
 }
 
 void loop() {
-  // Example: Print the current state (you can replace this with your logic)
+  digitalWrite(5,HIGH);
+	// Example: Print the current state (you can replace this with your logic)
   switch (thisState) {
     case IDLE:
       // Do nothing or handle idle state
@@ -1197,17 +1211,36 @@ void loop() {
  
  
   currentMillis = millis();
-  
-  // Read all inputs
+  if (isVibrating && currentMillis - vibrationStartTime >= 400){
+    digitalWrite(vibratePin, LOW);
+    isVibrating = false;
+  }
+   if (isVibrating2 && currentMillis - vibration2StartTime >= 600) {
+    digitalWrite(vibratepin2, LOW);
+    isVibrating2 = false;
+  }
+	// Read all inputs
   
   bool reloadButton = digitalRead(PIN_MAG);
   bool trigger = digitalRead(PIN_TRIGGER);
- 
-  
 
+// Update magazine status with non-blocking debounce delay
+  bool currentMagazineState = !reloadButton;
   
-  // Update magazine status
-  magazineInserted = !reloadButton;
+  // Detect magazine state change
+  if (currentMagazineState != magazineInserted) {
+    if (magazineChangeTime == 0) {
+      // First detection of change, record the time
+      magazineChangeTime = millis();
+    } else if (millis() - magazineChangeTime >= MAGAZINE_DEBOUNCE_MS) {
+      // Debounce period has passed, apply the change
+      magazineInserted = currentMagazineState;
+      magazineChangeTime = 0;
+    }
+  } else {
+    // No change detected, reset the timer
+    magazineChangeTime = 0;
+  }
   
   // Detect button presses (edges)
   bool triggerPressed = (trigger == LOW && prevTrigger == HIGH);
@@ -1231,7 +1264,7 @@ void loop() {
       if (right == 1 && !digitalRead(KY040_SW) && ja == 0 && dood == 0) {
       lives = 3;
       ja = 1;
-      ammo = 6;
+      ammo = 0;
       display.clearDisplay();
       display.drawBitmap(0, 0, leven[2] , 128,64,1);
       display.display();
@@ -1239,7 +1272,7 @@ void loop() {
       } else if (left == 1 && !digitalRead(KY040_SW) && ja == 0 && dood == 0) {
         lives = 1;
       ja = 1;
-      ammo = 6;
+      ammo = 0;
       display.clearDisplay();
       display.drawBitmap(0, 0, leven[3] , 128,64,1);
       display.display();
@@ -1258,29 +1291,33 @@ void loop() {
       } else if (triggerPressed && ammo > 0 && magazineInserted) {
         ammo--;
         Serial.println(ammo);
+				isVibrating = true;
+        vibrationStartTime = millis();
+        digitalWrite(vibratePin, HIGH);
+
         
         // Send IR signal mimicking NEC protocol for better detection
         Serial.println("Sending IR signal!");
         
         // NEC protocol header
-        ledcWrite(LEDC_CHANNEL, LEDC_DUTY);
+        ledcWrite(IR_TX_PIN, LEDC_DUTY);
         delayMicroseconds(9000);  // 9ms header burst
-        ledcWrite(LEDC_CHANNEL, 0);
+        ledcWrite(IR_TX_PIN, 0);
         delayMicroseconds(4500);  // 4.5ms space
         
         // Send data bits (32 bits total to mimic complete NEC frame)
         for (int i = 0; i < 32; i++) {
-          ledcWrite(LEDC_CHANNEL, LEDC_DUTY);
+          ledcWrite(IR_TX_PIN, LEDC_DUTY);
           delayMicroseconds(560);   // 560μs burst for each bit
-          ledcWrite(LEDC_CHANNEL, 0);
+          ledcWrite(IR_TX_PIN, 0);
           // Alternate between logical 0 and 1 timing
           delayMicroseconds((i % 2) ? 1690 : 560);
         }
         
         // Final stop bit
-        ledcWrite(LEDC_CHANNEL, LEDC_DUTY);
+        ledcWrite(IR_TX_PIN, LEDC_DUTY);
         delayMicroseconds(560);
-        ledcWrite(LEDC_CHANNEL, 0);
+        ledcWrite(IR_TX_PIN, 0);
         
         startMillis = currentMillis;
         currentState = SHOOTING;
@@ -1389,6 +1426,7 @@ void loop() {
   
   // Process IR signals - move captured pulses from ISR buffer to main loop
   static uint32_t lastIrEdgeReportMs = 0;
+  
   while (readIndex != writeIndex) {
     noInterrupts();
     const uint32_t duration = pulseDurationUs[readIndex];
@@ -1402,30 +1440,42 @@ void loop() {
     Serial.print("  duration(us): ");
     Serial.println(duration);
 
-    // Turn on status LED when we detect an IR signal burst (LOW state with significant duration)
-    if (!state && duration > 200 && duration < 100000) {
+    // SIMPLIFIED: Detect ANY IR burst activity
+    bool irSignalDetected = false;
+    
+    // Detect any IR burst (HIGH state with duration > 300us)
+    if (state && duration > 300 && duration < 15000) {
+      irSignalDetected = true;
+      Serial.println("IR burst detected!");
+    }
+    
+    if (irSignalDetected) {
+      // Turn on status LED
       if (!irLedOn) {
         irLedOn = true;
         irLedOnTimeMs = currentMillis;
         digitalWrite(IR_STATUS_LED, HIGH);
         Serial.println("IR signal received - LED on!");
-        
-        // Register a HIT when IR pulse is received (only if game is active)
-        // Added debouncing to prevent multiple hits from the same IR burst
-        if (ja == 1 && currentState == ALIVE && dood == 0) {
-          if ((currentMillis - lastHitTime) >= HIT_DEBOUNCE_MS) {
-            lives--;
-            lastHitTime = currentMillis;
-            Serial.print("HIT detected via IR! Lives remaining: ");
-            Serial.println(lives);
-            startMillis = currentMillis;
-            hitsec = 1;
-            right2 = 1;
-            left2 = 1;
-            currentState = HIT;
-          } else {
-            Serial.println("IR hit ignored - too soon after last hit");
-          }
+      }
+      
+      // Register a HIT immediately when IR burst is detected
+      // Allow hits in ALIVE, SHOOTING, or HIT states (not just ALIVE)
+      if (ja == 1 && (currentState == ALIVE || currentState == SHOOTING || currentState == HIT) && dood == 0) {
+        if ((currentMillis - lastHitTime) >= HIT_DEBOUNCE_MS) {
+          lives--;
+          lastHitTime = currentMillis;
+          Serial.print("HIT detected via IR burst! Lives remaining: ");
+          Serial.println(lives);
+          startMillis = currentMillis;
+          hitsec = 1;
+          right2 = 1;
+          left2 = 1;
+					isVibrating2 = true;
+        vibration2StartTime = millis();
+        digitalWrite(vibratepin2, HIGH);
+          currentState = HIT;
+        } else {
+          Serial.println("IR hit ignored - too soon after last hit");
         }
       }
     }
@@ -1449,5 +1499,6 @@ void loop() {
   
   // Update life LEDs
   updateLifeLEDs(lives);
+
 }
 
